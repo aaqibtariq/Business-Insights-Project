@@ -1,0 +1,31 @@
+# Step 1: Import libraries
+import pandas as pd
+import numpy as np
+from dateutil import parser
+
+
+# Step 2: Load CSVs
+order_items = pd.read_csv("order_items.csv")
+order_item_options = pd.read_csv("order_item_options.csv")
+date_dim = pd.read_csv("date_dim.csv")
+
+
+#  Standardize column names to lowercase in memory (no files written here)
+order_items.columns              = order_items.columns.str.lower()
+order_item_options.columns   = order_item_options.columns.str.lower()
+date_dim.columns                 = date_dim.columns.str.lower()
+
+
+# Optional useful fills (non-destructive)
+if "holiday_name" in date_dim.columns:
+    date_dim["holiday_name"] = date_dim["holiday_name"].fillna("Null")
+if "user_id" in order_items.columns:
+    order_items["user_id"] = order_items["user_id"].fillna("Null")
+
+
+order_items['creation_time_utc'] = order_items['creation_time_utc'].str[:10].str.replace('/', '-')
+date_dim['date_key'] = pd.to_datetime(date_dim['date_key'], format='%d-%m-%Y').dt.strftime('%Y-%m-%d')
+
+order_items.to_csv("order_items.csv", index=False)
+order_item_options.to_csv("order_item_options.csv", index=False)
+date_dim.to_csv("date_dim.csv", index=False)
