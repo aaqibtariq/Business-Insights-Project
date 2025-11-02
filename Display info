@@ -1,0 +1,126 @@
+# Step 2: Load CSVs
+import pandas as pd
+
+order_items = pd.read_csv("order_items.csv")
+order_item_options = pd.read_csv("order_item_options.csv")
+date_dim = pd.read_csv("date_dim.csv")
+
+# Convert all column names to lowercase right after loading
+order_items.columns = order_items.columns.str.lower()
+order_item_options.columns = order_item_options.columns.str.lower()
+date_dim.columns = date_dim.columns.str.lower()
+
+Step 3: Quick shape and preview
+print("order_items:", order_items.shape)
+print("order_item_options:", order_item_options.shape)
+print("date_dim:", date_dim.shape)
+
+display(order_items.head(3))
+display(order_item_options.head(3))
+display(date_dim.head(3))
+
+# Step 4: Info summary for all datasets
+for name, df in {
+    "order_items": order_items, 
+    "order_item_options": order_item_options, 
+    "date_dim": date_dim
+}.items():
+    print(f"\n----- {name} -----")
+    print(df.info())
+    print("\nMissing values per column:")
+    print(df.isnull().sum())
+
+# Step 5: Duplicate checks
+print("\nDuplicates count:")
+print({
+    "order_items": order_items.duplicated().sum(),
+    "order_item_options": order_item_options.duplicated().sum(),
+    "date_dim": date_dim.duplicated().sum()
+})
+
+# Also check duplicate (order_id, lineitem_id) pairs in order_items
+dup_pairs = order_items.duplicated(subset=["order_id", "lineitem_id"]).sum()
+print("Duplicate (order_id, lineitem_id) pairs in order_items:", dup_pairs)
+
+# ---- Step 6: Key columns uniqueness checks ----
+print("\nUnique order_id in order_items:", order_items["order_id"].nunique())
+print("Unique lineitem_id in order_items:", order_items["lineitem_id"].nunique())
+print("Unique order_id in order_item_options:", order_item_options["order_id"].nunique())
+
+# ---- Step 7: Numeric column overview ----
+num_cols = ["item_price", "item_quantity"]
+display(order_items[num_cols].describe())
+
+# Quick sanity on non-positive values (should be 0 or very rare)
+print("Non-positive item_price rows:", (order_items["item_price"] <= 0).sum())
+print("Non-positive item_quantity rows:", (order_items["item_quantity"] <= 0).sum())
+
+# ---- Step 8: Referential integrity between options and items ----
+missing_orders = order_item_options[~order_item_options["order_id"].isin(order_items["order_id"])]
+print("order_ids present in options but NOT in items:", missing_orders["order_id"].nunique())
+
+# Check pair-level match: options with (order_id, lineitem_id) not found in items
+opts_join = order_item_options.merge(
+    order_items[["order_id", "lineitem_id"]].drop_duplicates(),
+    on=["order_id", "lineitem_id"],
+    how="left",
+    indicator=True
+)
+opts_orphans = opts_join[opts_join["_merge"] == "left_only"]
+print("Options rows with no matching (order_id, lineitem_id) in items:", len(opts_orphans))
+
+# ---- Step 9: Join example (line-item level) ----
+merged = pd.merge(order_items, order_item_options, on=["order_id", "lineitem_id"], how="left")
+display(merged.head(3))
+print("Merge coverage - % of order_items with at least one option:",
+      (merged.groupby(["order_id", "lineitem_id"])["option_name"].transform("count") > 0).mean())
+
+# Find all duplicated rows
+dupes = order_item_options[order_item_options.duplicated(keep=False)]
+
+# Count by order_id and lineitem_id
+dupe_summary = dupes.groupby(["order_id", "lineitem_id"]).size().reset_index(name="dupe_count")
+
+# Show a few examples
+display(dupes.head(10))
+print("Distinct duplicated (order_id, lineitem_id) pairs:", dupe_summary.shape[0])
+
+
+#1️⃣ Verify date coverage overlap
+import pandas as pd
+
+order_items['creation_time_utc'] = pd.to_datetime(order_items['creation_time_utc'], errors='coerce')
+date_dim['date_key'] = pd.to_datetime(date_dim['date_key'], errors='coerce')
+
+unique_order_dates = order_items['creation_time_utc'].dt.normalize().nunique()
+unique_dim_dates   = date_dim['date_key'].nunique()
+matched = order_items['creation_time_utc'].dt.normalize().isin(date_dim['date_key']).mean()
+
+print(f"Distinct order dates: {unique_order_dates}")
+print(f"Distinct calendar dates: {unique_dim_dates}")
+print(f"% of order dates found in date_dim: {matched*100:.2f}%")
+
+#2️⃣ Check join key integrity
+
+# Check for duplicates in (order_id, lineitem_id)
+dupes = order_items.duplicated(subset=['order_id','lineitem_id']).sum()
+print(f"Duplicate (order_id, lineitem_id): {dupes}")
+
+# Ensure each option line has a valid parent order_item
+valid_links = order_item_options.merge(
+    order_items[['order_id','lineitem_id']],
+    on=['order_id','lineitem_id'],
+    how='left', indicator=True
+)
+missing_parents = valid_links['_merge'].eq('left_only').sum()
+print(f"Option rows missing parent order_items: {missing_parents}")
+
+
+#3️⃣ Inspect negatives (for discount logic)
+
+neg_item = (order_items['item_price'] < 0).sum()
+neg_option = (order_item_options['option_price'] < 0).sum()
+print(f"Negative item_price: {neg_item}, Negative option_price: {neg_option}")
+
+
+
